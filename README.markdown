@@ -35,7 +35,7 @@ These exercises are useful to gain an initial understanding of the problems that
 lenses solve, as well as to gain an insight into the history of lenses and how
 the theories have developed over time.
 
-##### `Lets.StoreLens`
+##### ~~`Lets.StoreLens`~~
 
 This series of exercises is similar to `Lets.GetSetLens`, however, using a
 slightly altered representation of a lens, based on the `Store` comonad, which
