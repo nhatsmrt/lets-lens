@@ -266,7 +266,7 @@ mapL ::
 mapL k = Lens optionalInsert (Map.lookup k)
   where
     optionalInsert m v = case v of
-      Nothing -> m
+      Nothing -> Map.delete k m
       Just v -> Map.insert k v m
 
 -- |
