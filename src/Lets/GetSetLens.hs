@@ -90,7 +90,7 @@ get (Lens _ g) =
 -- prop> let types = (x :: Int, y :: String) in set sndL (x, y) z == (x, z)
 set ::
   Lens a b
-  -> a 
+  -> a
   -> b
   -> a
 set (Lens s _) a =
@@ -104,7 +104,7 @@ getsetLaw ::
   -> Bool
 getsetLaw l =
   \a -> set l a (get l a) == a
-  
+
 -- | The set/get law of lenses. This function should always return @True@.
 setgetLaw ::
   Eq b =>
@@ -114,7 +114,7 @@ setgetLaw ::
   -> Bool
 setgetLaw l a b =
   get l (set l a b) == b
-  
+
 -- | The set/set law of lenses. This function should always return @True@.
 setsetLaw ::
   Eq a =>
@@ -144,8 +144,7 @@ modify ::
   -> (b -> b)
   -> a
   -> a
-modify =
-  error "todo: modify"
+modify (Lens setter getter) f a = setter a (f (getter a))
 
 -- | An alias for @modify@.
 (%~) ::
@@ -174,8 +173,7 @@ infixr 4 %~
   -> b
   -> a
   -> a
-(.~) =
-  error "todo: (.~)"
+(.~) lens b = modify lens (\_ -> b)
 
 infixl 5 .~
 
@@ -195,8 +193,7 @@ fmodify ::
   -> (b -> f b)
   -> a
   -> f a
-fmodify =
-  error "todo: fmodify"
+fmodify lens f a = (set lens a) <$> (f (get lens a))
 
 -- |
 --
@@ -211,8 +208,7 @@ fmodify =
   -> f b
   -> a
   -> f a
-(|=) =
-  error "todo: (|=)"
+(|=) lens fb = fmodify lens (\_ -> fb)
 
 infixl 5 |=
 
@@ -228,8 +224,7 @@ infixl 5 |=
 -- prop> let types = (x :: Int, y :: String) in setsetLaw fstL (x, y) z
 fstL ::
   Lens (x, y) x
-fstL =
-  error "todo: fstL"
+fstL = Lens (\(_, y) newX -> (newX, y)) fst
 
 -- |
 --
@@ -243,8 +238,7 @@ fstL =
 -- prop> let types = (x :: Int, y :: String) in setsetLaw sndL (x, y) z
 sndL ::
   Lens (x, y) y
-sndL =
-  error "todo: sndL"
+sndL = Lens (\(x, _) newY -> (x, newY)) snd
 
 -- |
 --
@@ -269,8 +263,11 @@ mapL ::
   Ord k =>
   k
   -> Lens (Map k v) (Maybe v)
-mapL =
-  error "todo: mapL"
+mapL k = Lens optionalInsert (Map.lookup k)
+  where
+    optionalInsert m v = case v of
+      Nothing -> m
+      Just v -> Map.insert k v m
 
 -- |
 --
@@ -295,8 +292,7 @@ setL ::
   Ord k =>
   k
   -> Lens (Set k) Bool
-setL =
-  error "todo: setL"
+setL k = Lens (\s b -> if b then Set.insert k s else Set.delete k s) (\m -> Set.member k m)
 
 -- |
 --
@@ -309,8 +305,7 @@ compose ::
   Lens b c
   -> Lens a b
   -> Lens a c
-compose =
-  error "todo: compose"
+compose (Lens setterBC getterBC) (Lens setterAB getterAB) = Lens (\a c -> setterAB a (setterBC (getterAB a) c)) (getterBC . getterAB)
 
 -- | An alias for @compose@.
 (|.) ::
@@ -331,8 +326,7 @@ infixr 9 |.
 -- 4
 identity ::
   Lens a a
-identity =
-  error "todo: identity"
+identity = Lens (\_ a -> a) id
 
 -- |
 --
@@ -345,8 +339,7 @@ product ::
   Lens a b
   -> Lens c d
   -> Lens (a, c) (b, d)
-product =
-  error "todo: product"
+product (Lens setterAB getterAB) (Lens setterCD getterCD) = Lens (\(a, c) (b, d) -> (setterAB a b, setterCD c d)) (\(a, c) -> (getterAB a, getterCD c))
 
 -- | An alias for @product@.
 (***) ::
@@ -375,8 +368,12 @@ choice ::
   Lens a x
   -> Lens b x
   -> Lens (Either a b) x
-choice =
-  error "todo: choice"
+choice lensAX lensBX = Lens choiceSetter (either (get lensAX) (get lensBX))
+  where
+    choiceSetter ab x = case ab of
+      Left a -> Left (set lensAX a x)
+      Right b -> Right (set lensBX b x)
+
 
 -- | An alias for @choice@.
 (|||) ::
@@ -463,8 +460,7 @@ addressL =
 getSuburb ::
   Person
   -> String
-getSuburb =
-  error "todo: getSuburb"
+getSuburb = get (suburbL |. addressL)
 
 -- |
 --
@@ -477,8 +473,7 @@ setStreet ::
   Person
   -> String
   -> Person
-setStreet =
-  error "todo: setStreet"
+setStreet = set (streetL |. addressL)
 
 -- |
 --
@@ -490,8 +485,7 @@ setStreet =
 getAgeAndCountry ::
   (Person, Locality)
   -> (Int, String)
-getAgeAndCountry =
-  error "todo: getAgeAndCountry"
+getAgeAndCountry = get (product ageL countryL)
 
 -- |
 --
@@ -502,9 +496,8 @@ getAgeAndCountry =
 -- (Person 28 "Mary" (Address "83 Mary Ln" "Maryland" (Locality "Some Other City" "Western Mary" "Maristan")),Address "15 Fred St" "Fredville" (Locality "Mary Mary" "Western Mary" "Maristan"))
 setCityAndLocality ::
   (Person, Address) -> (String, Locality) -> (Person, Address)
-setCityAndLocality =
-  error "todo: setCityAndLocality"
-  
+setCityAndLocality = set (product (cityL |. localityL |. addressL) localityL)
+
 -- |
 --
 -- >>> getSuburbOrCity (Left maryAddress)
@@ -515,8 +508,7 @@ setCityAndLocality =
 getSuburbOrCity ::
   Either Address Locality
   -> String
-getSuburbOrCity =
-  error "todo: getSuburbOrCity"
+getSuburbOrCity = get (suburbL ||| cityL)
 
 -- |
 --
@@ -529,8 +521,7 @@ setStreetOrState ::
   Either Person Locality
   -> String
   -> Either Person Locality
-setStreetOrState =
-  error "todo: setStreetOrState"
+setStreetOrState = set ((streetL |. addressL) ||| stateL)
 
 -- |
 --
@@ -542,5 +533,4 @@ setStreetOrState =
 modifyCityUppercase ::
   Person
   -> Person
-modifyCityUppercase =
-  error "todo: modifyCityUppercase"
+modifyCityUppercase = modify (cityL |. localityL |. addressL) (map toUpper)
