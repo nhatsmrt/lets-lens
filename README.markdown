@@ -43,7 +43,7 @@ fuses the typical `get` and `set` operations into a data structure. This
 representation is described in detail in
 *Morris, Tony. "Asymmetric Lenses in Scala." (2012).*
 
-##### `Lets.OpticPolyLens`
+##### ~~`Lets.OpticPolyLens`~~
 
 This series of exercises introduces a new representation of lenses, first
 described by Twan van Laarhoven. This representation also introduces a
