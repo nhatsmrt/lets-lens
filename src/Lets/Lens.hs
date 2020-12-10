@@ -73,7 +73,7 @@ module Lets.Lens (
 , intOrLengthEven
 ) where
 
-import Control.Applicative(Applicative((<*>), pure))
+import Control.Applicative(Applicative((<*>), pure, liftA2))
 import Data.Char(toUpper)
 import Data.Foldable(Foldable(foldMap))
 import Data.Functor((<$>))
@@ -98,7 +98,7 @@ import Prelude hiding (product)
 --
 -- class (Foldable t, Functor t) => Traversable t where
 --   traverse ::
---     Applicative f => 
+--     Applicative f =>
 --     (a -> f b)
 --     -> t a
 --     -> f (t b)
@@ -111,17 +111,15 @@ fmapT ::
   (a -> b)
   -> t a
   -> t b
-fmapT =
-  error "todo: fmapT"
+fmapT f ta = getIdentity (traverse (Identity . f) ta)
 
 -- | Let's refactor out the call to @traverse@ as an argument to @fmapT@.
-over :: 
+over ::
   ((a -> Identity b) -> s -> Identity t)
   -> (a -> b)
   -> s
   -> t
-over =
-  error "todo: over"
+over liftFn f s =  getIdentity (liftFn (Identity . f) s)
 
 -- | Here is @fmapT@ again, passing @traverse@ to @over@.
 fmapTAgain ::
@@ -129,8 +127,7 @@ fmapTAgain ::
   (a -> b)
   -> t a
   -> t b
-fmapTAgain =
-  error "todo: fmapTAgain"
+fmapTAgain = over traverse
 
 -- | Let's create a type-alias for this type of function.
 type Set s t a b =
@@ -142,23 +139,20 @@ type Set s t a b =
 -- unwrapping.
 sets ::
   ((a -> b) -> s -> t)
-  -> Set s t a b  
-sets =
-  error "todo: sets"
+  -> Set s t a b
+sets liftFn =  \f s -> Identity (liftFn (getIdentity . f) s)
 
 mapped ::
   Functor f =>
   Set (f a) (f b) a b
-mapped =
-  error "todo: mapped"
+mapped = sets (\f -> (<$>) f)
 
 set ::
   Set s t a b
   -> s
   -> b
   -> t
-set =
-  error "todo: set"
+set f s b = getIdentity (f (\_ -> Identity b) s)
 
 ----
 
@@ -170,8 +164,7 @@ foldMapT ::
   (a -> b)
   -> t a
   -> b
-foldMapT =
-  error "todo: foldMapT"
+foldMapT f ta = getConst (traverse (Const . f) ta)
 
 -- | Let's refactor out the call to @traverse@ as an argument to @foldMapT@.
 foldMapOf ::
@@ -179,8 +172,7 @@ foldMapOf ::
   -> (a -> r)
   -> s
   -> r
-foldMapOf =
-  error "todo: foldMapOf"
+foldMapOf f1 f2 s = getConst (f1 (Const . f2) s)
 
 -- | Here is @foldMapT@ again, passing @traverse@ to @foldMapOf@.
 foldMapTAgain ::
@@ -188,8 +180,7 @@ foldMapTAgain ::
   (a -> b)
   -> t a
   -> b
-foldMapTAgain =
-  error "todo: foldMapTAgain"
+foldMapTAgain = foldMapOf traverse
 
 -- | Let's create a type-alias for this type of function.
 type Fold s t a b =
@@ -206,14 +197,13 @@ folds ::
   -> (a -> Const b a)
   -> s
   -> Const t s
-folds =
-  error "todo: folds"
+folds f1 f2 s = Const (f1 (getConst . f2) s)
 
 folded ::
   Foldable f =>
   Fold (f a) (f a) a a
-folded =
-  error "todo: folded"
+-- (a -> Const r a) -> f a -> Const r (f a)
+folded = folds foldMap
 
 ----
 
@@ -227,8 +217,7 @@ get ::
   Get a s a
   -> s
   -> a
-get =
-  error "todo: get"
+get getter = getConst . getter Const
 
 ----
 
@@ -243,20 +232,22 @@ type Traversal s t a b =
 -- | Traverse both sides of a pair.
 both ::
   Traversal (a, a) (b, b) a b
-both =
-  error "todo: both"
+both = \f (a1, a2) -> liftA2 (,) (f a1) (f a2)
 
 -- | Traverse the left side of @Either@.
 traverseLeft ::
   Traversal (Either a x) (Either b x) a b
-traverseLeft =
-  error "todo: traverseLeft"
+-- (a -> f b) -> Either a x -> f (Either b x)
+traverseLeft f ax = case ax of
+  Left a -> Left <$> (f a)
+  Right x -> Right <$> (pure x)
 
 -- | Traverse the right side of @Either@.
 traverseRight ::
   Traversal (Either x a) (Either x b) a b
-traverseRight =
-  error "todo: traverseRight"
+traverseRight f xa = case xa of
+  Left x -> Left <$> (pure x)
+  Right a -> Right <$> (f a)
 
 type Traversal' a b =
   Traversal a a b b
@@ -286,44 +277,56 @@ type Prism s t a b =
 
 _Left ::
   Prism (Either a x) (Either b x) a b
-_Left =
-  error "todo: _Left"
+-- p a (f b) -> p (Either a x) (f Either b x)
+_Left = (dimap id sequenceEither) . left
+  where
+    sequenceEither :: Applicative f => Either (f b) x -> f (Either b x)
+    sequenceEither eitherFBX = case eitherFBX of
+      Left fb -> Left <$> fb
+      Right x -> pure (Right x)
 
 _Right ::
-  Prism (Either x a) (Either x b) a b 
-_Right =
-  error "todo: _Right"
+  Prism (Either x a) (Either x b) a b
+_Right = (dimap id sequenceEither) . right
+  where
+    sequenceEither :: Applicative f => Either x (f b) -> f (Either x b)
+    sequenceEither eitherFBX = case eitherFBX of
+      Right fb -> Right <$> fb
+      Left x -> pure (Left x)
 
 prism ::
   (b -> t)
   -> (s -> Either t a)
   -> Prism s t a b
-prism =
-  error "todo: prism"
+prism f1 f2 = (dimap f2 (either pure ((<$>) f1))) . right
 
 _Just ::
   Prism (Maybe a) (Maybe b) a b
-_Just =
-  error "todo: _Just"
+-- Maybe a -> Either (Maybe b) a
+_Just = prism Just (maybe (Left Nothing) (Right . id))
 
 _Nothing ::
   Prism (Maybe a) (Maybe a) () ()
-_Nothing =
-  error "todo: _Nothing"
+-- Maybe a -> Either (Maybe a) ()
+_Nothing = prism (const Nothing) (maybe (Left Nothing) (const $ Right ()))
 
 setP ::
   Prism s t a b
   -> s
   -> Either t a
-setP _ _ =
-  error "todo: setP"
+setP pr = swap . (pr Left)
+  where
+    swap :: Either x y  -> Either y x
+    swap xy = case xy of
+      Left x -> Right x
+      Right y -> Left y
+
 
 getP ::
   Prism s t a b
   -> b
   -> t
-getP _ _ =
-  error "todo: getP"
+getP pr = getIdentity . getTagged . pr . Tagged . Identity
 
 type Prism' a b =
   Prism a a b b
@@ -346,8 +349,7 @@ modify ::
   -> (a -> b)
   -> s
   -> t
-modify _ _ _ =
-  error "todo: modify"
+modify lens f s = getIdentity (lens (Identity . f) s)
 
 -- | An alias for @modify@.
 (%~) ::
@@ -376,8 +378,7 @@ infixr 4 %~
   -> b
   -> s
   -> t
-(.~) _ _ _ =
-  error "todo: (.~)"
+(.~) lens b = modify lens (\_ -> b)
 
 infixl 5 .~
 
@@ -396,9 +397,8 @@ fmodify ::
   Lens s t a b
   -> (a -> f b)
   -> s
-  -> f t 
-fmodify _ _ _ =
-  error "todo: fmodify"
+  -> f t
+fmodify lens = lens
 
 -- |
 --
@@ -413,8 +413,7 @@ fmodify _ _ _ =
   -> f b
   -> s
   -> f t
-(|=) _ _ _ =
-  error "todo: (|=)"
+(|=) lens fb = fmodify lens (\_ -> fb)
 
 infixl 5 |=
 
@@ -424,8 +423,7 @@ infixl 5 |=
 -- (30,"abc")
 fstL ::
   Lens (a, x) (b, x) a b
-fstL =
-  error "todo: fstL"
+fstL = \f (a, x) -> (\b -> (b, x)) <$> (f a)
 
 -- |
 --
@@ -433,8 +431,7 @@ fstL =
 -- (13,"abcdef")
 sndL ::
   Lens (x, a) (x, b) a b
-sndL =
-  error "todo: sndL"
+sndL = \f (x, a) -> (\b -> (x, b)) <$> (f a)
 
 -- |
 --
@@ -464,8 +461,11 @@ mapL ::
   Ord k =>
   k
   -> Lens (Map k v) (Map k v) (Maybe v) (Maybe v)
-mapL =
-  error "todo: mapL"
+mapL k = \f m -> (optionalInsert m) <$> f (Map.lookup k m)
+  where
+    optionalInsert m optV = case optV of
+      Nothing -> Map.delete k m
+      Just v -> Map.insert k v m
 
 -- |
 --
@@ -495,8 +495,7 @@ setL ::
   Ord k =>
   k
   -> Lens (Set.Set k) (Set.Set k) Bool Bool
-setL =
-  error "todo: setL"
+setL k = \f m -> (\b -> if b then Set.insert k m else Set.delete k m) <$> f (Set.member k m)
 
 -- |
 --
@@ -509,8 +508,7 @@ compose ::
   Lens s t a b
   -> Lens q r s t
   -> Lens q r a b
-compose _ _ =
-  error "todo: compose"
+compose lens1 lens2 = \f q -> lens2 (lens1 f) q
 
 -- | An alias for @compose@.
 (|.) ::
@@ -531,8 +529,7 @@ infixr 9 |.
 -- 4
 identity ::
   Lens a b a b
-identity =
-  error "todo: identity"
+identity = ($)
 
 -- |
 --
@@ -545,8 +542,7 @@ product ::
   Lens s t a b
   -> Lens q r c d
   -> Lens (s, q) (t, r) (a, c) (b, d)
-product _ _ =
-  error "todo: product"
+product r1 r2 = \f (s, q) -> getAlongsideLeft (r1 (\a -> AlongsideLeft (getAlongsideRight (r2 (\c -> AlongsideRight (f (a, c))) q))) s)
 
 -- | An alias for @product@.
 (***) ::
@@ -575,8 +571,9 @@ choice ::
   Lens s t a b
   -> Lens q r a b
   -> Lens (Either s q) (Either t r) a b
-choice _ _ =
-  error "todo: choice"
+choice r1 r2 = \f sq -> case sq of
+  Left s -> Left <$> (r1 f s)
+  Right q -> Right <$> (r2 f q)
 
 -- | An alias for @choice@.
 (|||) ::
@@ -659,8 +656,7 @@ intAndL p (IntAnd n a) =
 getSuburb ::
   Person
   -> String
-getSuburb =
-  error "todo: getSuburb"
+getSuburb = get (suburbL |. addressL)
 
 -- |
 --
@@ -673,8 +669,7 @@ setStreet ::
   Person
   -> String
   -> Person
-setStreet =
-  error "todo: setStreet"
+setStreet = set (streetL |. addressL)
 
 -- |
 --
@@ -686,8 +681,7 @@ setStreet =
 getAgeAndCountry ::
   (Person, Locality)
   -> (Int, String)
-getAgeAndCountry =
-  error "todo: getAgeAndCountry"
+getAgeAndCountry = get (product ageL countryL)
 
 -- |
 --
@@ -698,9 +692,8 @@ getAgeAndCountry =
 -- (Person 28 "Mary" (Address "83 Mary Ln" "Maryland" (Locality "Some Other City" "Western Mary" "Maristan")),Address "15 Fred St" "Fredville" (Locality "Mary Mary" "Western Mary" "Maristan"))
 setCityAndLocality ::
   (Person, Address) -> (String, Locality) -> (Person, Address)
-setCityAndLocality =
-  error "todo: setCityAndLocality"
-  
+setCityAndLocality = set (product (cityL |. localityL |. addressL) localityL)
+
 -- |
 --
 -- >>> getSuburbOrCity (Left maryAddress)
@@ -712,7 +705,7 @@ getSuburbOrCity ::
   Either Address Locality
   -> String
 getSuburbOrCity =
-  error "todo: getSuburbOrCity"
+  get (suburbL ||| cityL)
 
 -- |
 --
@@ -726,7 +719,7 @@ setStreetOrState ::
   -> String
   -> Either Person Locality
 setStreetOrState =
-  error "todo: setStreetOrState"
+  set (streetL |. addressL ||| stateL)
 
 -- |
 --
@@ -738,8 +731,7 @@ setStreetOrState =
 modifyCityUppercase ::
   Person
   -> Person
-modifyCityUppercase =
-  error "todo: modifyCityUppercase"
+modifyCityUppercase = modify (cityL |. localityL |. addressL) (map toUpper)
 
 -- |
 --
@@ -751,8 +743,12 @@ modifyCityUppercase =
 modifyIntAndLengthEven ::
   IntAnd [a]
   -> IntAnd Bool
-modifyIntAndLengthEven =
-  error "todo: modifyIntAndLengthEven"
+-- (a -> f b) -> (s -> f t)
+-- a == [a]; b == bool
+-- s == IntAnd [a]
+modifyIntAndLengthEven = modify lensIntAnd ((\len -> len `mod` 2 == 0) . length)
+  where
+    lensIntAnd f = \(IntAnd i a) -> (IntAnd i) <$> (f a)
 
 ----
 
@@ -762,8 +758,9 @@ modifyIntAndLengthEven =
 -- Locality "ABC" "DEF" "GHI"
 traverseLocality ::
   Traversal' Locality String
-traverseLocality =
-  error "todo: traverseLocality"
+traverseLocality = \f (Locality c t y) -> liftA3 Locality (f c) (f t) (f y)
+  where
+    liftA3 f fx fy fz = (pure f) <*> fx <*> fy <*> fz
 
 -- |
 --
@@ -774,13 +771,24 @@ traverseLocality =
 -- IntOrIsNot "abc"
 intOrIntP ::
   Prism' (IntOr a) Int
-intOrIntP =
-  error "todo: intOrIntP"
+--  p Int (f Int) -> p (IntOr a) (f IntOr a)
+intOrIntP = (dimap modifyLeft (either ((<$>) IntOrIs) (pure . IntOrIsNot))) . left
+  where
+    modifyLeft :: IntOr a -> Either Int a
+    modifyLeft iOrA = case iOrA of
+      IntOrIs i -> Left i
+      IntOrIsNot a -> Right a
+
 
 intOrP ::
   Prism (IntOr a) (IntOr b) a b
-intOrP =
-  error "todo: intOrP"
+-- p a (f b) -> p (IntOr a) (f (IntOr b))
+intOrP = (dimap modifyLeft (either ((<$>) IntOrIsNot) (pure . IntOrIs))) . left
+  where
+    modifyLeft :: IntOr a -> Either a Int
+    modifyLeft iOrA = case iOrA of
+      IntOrIs i -> Right i
+      IntOrIsNot a -> Left a
 
 -- |
 --
@@ -792,8 +800,8 @@ intOrP =
 --
 -- >>> intOrLengthEven (IntOrIs 10)
 -- IntOrIs 10
+-- Prism (IntOr [a]) (IntOr Bool) [a] Bool
 intOrLengthEven ::
   IntOr [a]
   -> IntOr Bool
-intOrLengthEven =
-  error "todo: intOrLengthEven"
+intOrLengthEven intOrA = getIdentity ((intOrP (Identity . ((==) 0) . (\len -> len `mod` 2) . length)) intOrA)
