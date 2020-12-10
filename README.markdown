@@ -49,7 +49,7 @@ This series of exercises introduces a new representation of lenses, first
 described by Twan van Laarhoven. This representation also introduces a
 generalisation of lenses to permit *polymorphic update* of structures.
 
-##### `Lets.Lens`
+##### ~~`Lets.Lens`~~
 
 This series of exercises starts at first principles to derive the concept of a
 lens, as it was first described by Twan van Laarhoven. The derivation then goes
